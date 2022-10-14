@@ -1,0 +1,46 @@
+pipeline {
+    agent any
+    tools {
+       maven "Maven"
+    }
+    stages {
+        stage('Git Clone Stage') {
+            steps {
+                git branch: 'main', credentialsId: 'gittest', url: 'https://github.com/sivaprasadkmastech/mdmprojectwar.git'
+            }
+        }
+        stage('Build Stage') {
+            steps {
+                sh "mvn -f /home/appadmin/builds/workspace/Nexuspipeline/simple/pom.xml clean install"
+            }
+        }
+        stage('SonarScanner Stage') {
+            steps {
+                withSonarQubeEnv('Sonar') {
+                sh "mvn -f /home/appadmin/builds/workspace/Nexuspipeline/simple/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:3.7.0.1746:sonar"
+               }
+            }
+        }
+        stage("publish to nexus") {
+            steps {
+                echo 'artifact upload started'
+				nexusArtifactUploader artifacts: [[artifactId: 'simple', classifier: '', file: '/home/appadmin/builds/workspace/Nexuspipeline/simple/target/simple.war', type: 'war']], credentialsId: 'Nexusappcred', groupId: 'com.mit.project', nexusUrl: 'chn-mit-jenkins03.corp.mastechinfotrellis.com:8081/repository/MDMProject/', nexusVersion: 'nexus3', protocol: 'http', repository: 'MDMProject', version: '1.${BUILD_NUMBER}.0'
+                echo 'artifact uploaded'
+			}
+		}
+		stage('Deploy Stage') {
+          steps {
+            sshagent(['tomcatssh']) {
+              sh "scp -v -o StrictHostKeyChecking=no /home/appadmin/builds/workspace/Nexuspipeline/simple/target/simple.war appadmin@10.100.15.67:/opt/apache-tomcat-9.0.67/webapps/"
+                } 
+              }
+            }
+        stage('Email Notification'){
+            steps {
+                emailext body: '''Build is Success
+                Thanks
+                Devops Team''', subject: '$PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!', to: 'sivamit2022@gmail.com'
+            }
+        }
+      }
+     }    
