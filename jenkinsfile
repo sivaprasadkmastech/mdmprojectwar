@@ -21,6 +21,13 @@ pipeline {
                }
             }
         }
+	stage('Build copy Stage') {
+            steps {
+                // sh "scp /home/appadmin/builds/workspace/Copywar/simple/target/simple.war /home/appadmin/oldbuilds/Copywar/" //
+                // sh 'scp /home/appadmin/builds/workspace/Copywar/simple/target/simple.war /home/appadmin/oldbuilds/Copywar/simple_"$(date +%d-%m-%Y_%H:%M:%S)".war' //
+                sh 'scp /home/appadmin/builds/workspace/Copywar/simple/target/simple.war /home/appadmin/oldbuilds/Copywar/simple_1."${BUILD_NUMBER}".0.war'
+            }
+        }
         stage("publish to nexus") {
             steps {
                 echo 'artifact upload started'
