@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+    tools {
+       maven "Maven"
+    }
+    stages {
+        stage('Git Clone Stage') {
+            steps {
+                git branch: 'main', credentialsId: 'git01hostprivateuser', url: 'git@github.com:sivaprasadkmastech/mdmslackproject.git'
+            }
+        }
+        stage('Build Stage') {
+            steps {
+                sh "mvn -f /home/appadmin/builds/workspace/MDMSlackproject/slackmdm/pom.xml clean install"
+            }
+        }
+        stage('Build copy Stage to local folder') {
+            steps {
+                // sh "scp /home/appadmin/builds/workspace/Copywar/simple/target/simple.war /home/appadmin/oldbuilds/Copywar/" //
+                // sh 'scp /home/appadmin/builds/workspace/Copywar/simple/target/simple.war /home/appadmin/oldbuilds/Copywar/simple_"$(date +%d-%m-%Y_%H:%M:%S)".war' //
+                //sh 'mkdir /home/appadmin/oldbuilds/MDMSlackproject'// only first time to create folder in this path //
+                sh 'scp /home/appadmin/builds/workspace/MDMSlackproject/slackmdm/target/slackmdm.war /home/appadmin/oldbuilds/MDMSlackproject/slackmdm_1."${BUILD_NUMBER}".0.war'
+            }
+        }
+        stage('SonarScanner Stage') {
+            steps {
+                withSonarQubeEnv('Sonar') {
+                sh "mvn -f /home/appadmin/builds/workspace/MDMSlackproject/slackmdm/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:3.7.0.1746:sonar"
+               }
+            }
+        }
+        stage("publish to nexus") {
+            steps {
+                echo 'artifact upload started'
+				nexusArtifactUploader artifacts: [[artifactId: 'slackmdm', classifier: '', file: '/home/appadmin/builds/workspace/MDMSlackproject/slackmdm/target/slackmdm.war', type: 'war']], credentialsId: 'Nexusappcred', groupId: 'com.mit.projectmdm', nexusUrl: 'chn-mit-jenkins03.corp.mastechinfotrellis.com:8081/repository/MDMProject/', nexusVersion: 'nexus3', protocol: 'http', repository: 'MDMProject', version: '1.${BUILD_NUMBER}.0'
+                echo 'artifact uploaded'
+			}
+		}
+		stage('DEV Deploy Stage') {
+          steps {
+            sshagent(['tomcatssh']) {
+              sh "scp -v -o StrictHostKeyChecking=no /home/appadmin/builds/workspace/MDMSlackproject/slackmdm/target/slackmdm.war appadmin@10.100.15.67:/opt/apache-tomcat-9.0.67/webapps/"
+                } 
+              }
+            }
+        stage('DEV Slack notification Stage') {
+          steps {
+            //slackSend channel: 'mdmslack', message: 'Deploy Sucess'//
+            slackSend(channel:'mdmslack', message: "Deploy Sucessful in Dev here is the info -job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+          }
+        }
+        stage('DEV Approval Stage') {
+          steps {
+          echo "Getting approval from Dev team manager for SAPE deployment"
+            timeout(time:7, unit: 'DAYS'){
+            input message: 'Do you want to deploy in SAPE env?', submitter: 'admin'
+            }
+           }
+          }
+        stage('SAPE Deploy Stage') {
+          steps {
+            sshagent(['tomcatssh']) {
+              sh "scp -v -o StrictHostKeyChecking=no /home/appadmin/builds/workspace/MDMSlackproject/slackmdm/target/slackmdm.war root@10.100.15.55:/opt/apache-tomcat-9.0.67/webapps/"
+                } 
+              }
+            }
+        stage('SAPE Slack notification Stage') {
+          steps {
+            //slackSend channel: 'mdmslack', message: 'Deploy Sucess'//
+            slackSend(channel:'mdmslack', message: "Deploy Sucessful in SAPE here is the info -job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+          }
+        }
+    }
+ }  
